@@ -1,0 +1,134 @@
+How Well Do Weight Lifting Exercises are Performed?
+========================================================
+
+## Synopsis
+The current report is a project aiming to predict the manner in which a person performed a weight lifting exercise. The data for this analysis was collected from sensors fitted onto specific parts of the body of 6 participants while performing the exercise.
+
+For this analysis we tried 5 different prediction models and concluded that the **Random Trees** algorithm was the one that gave the best accuracy prediction (**>95%**) and the lower out of sample error (**<5%**)
+
+## Data Processing & Model Selection
+
+### Pre-Processing & Data Cleaning
+The data for this project comes from [http://groupware.les.inf.puc-rio.br/har][1].
+[1]: http://groupware.les.inf.puc-rio.br/har
+
+We started by examining the variables in the training and test data sets in order to decide which variables to use when training our model. We removed all columns that had a majority of NA values and all columns of class "factor". We also removed the column "X".
+
+At the end of the data processing we ensured that both data sets (training and test) had the same columns selected with the only difference the outcome variable which was column **classe** in the training set and the column **problem_id** in the test set.
+
+```{r echo=FALSE, eval=FALSE}
+library (caret)
+library (kernlab)
+# Move to the project working directory
+setwd('C:\\epsychog\\Trainings & Events\\Data Science\\Data Science Specialisation (coursera)\\8. Practical Machine Learning\\ML_Project')
+
+# Read in the TEST data set
+pmlTst <- read.csv("pml-testing.csv")
+# Remove the columns of class "factor" and the output column (problem_id)
+pmlTst2 <- pmlTst[!sapply(pmlTst,is.factor)]
+pmlTst2 <- subset(pmlTst2, select = -problem_id )
+pmlTst2 <- subset(pmlTst2, select = -X )
+# Remove the columns with NA values
+pmlTst2 <- pmlTst2[,colSums(is.na(pmlTst2))<nrow(pmlTst2)]
+
+# Read in the TRAINING data
+pml <- read.csv("pml-training.csv")
+# Keep only the columns that also exist in the test set
+pml2 <- pml[,colnames(pmlTst2)]
+
+# Add back the "classe" column to the training set
+pml2$classe <- pml$classe
+# Add back the "problem_id" column to the test set
+pmlTst2$problem_id <- pmlTst$problem_id
+```
+
+### Splitting the Data
+We split the training data set into 3 parts
+* training (60%)
+* cross-validation (20%)
+* test (20%)
+
+```{r echo=FALSE, eval=FALSE}
+# Split the Training data set into: training (60%), cv (20%) & test (20%)
+set.seed(12345)
+idxTrain <- createDataPartition(y=pml2$classe,p=0.60, list=FALSE)
+training <- pml2[idxTrain,]
+temp <- pml2[-idxTrain,]
+idxCV <- createDataPartition(y=temp$classe,p=0.50, list=FALSE)
+cv <- temp[idxCV,]
+test <- temp[-idxCV,]
+```
+
+### Model Fitting & Selection
+We selected 5 models to test with our data set based on the following criteria:
+
+1. The type of project that each method was most suitable for (i.e. Classification, Regression or Both). 
+2. Our familiarity with the model.
+
+As our project involves a classification project, we selected only models suitable for either Classification or for both classification and regression. Specifically, the models tested were the following:
+
+* Decision Trees (rpart)
+* Random Forests (rf)
+* Boosting with Trees (gbm)
+* Linear Discriminant Analysis (lda)
+* Naive Bayes (nb)
+
+Initially we tried to train our models on the training partition we created which corresponded to 60% of the training set. However we found that the algorithms Random Forests, GBM and Naive Bayers were taking a very long time to run so we decided to training our algorithm on 1000 observations selected randomly from the training partition we created.
+
+We trained each of the 5 models on the 100 observations and checked the accuracy of each one using the test partition we created form the training set.
+
+```{r echo=FALSE, eval=FALSE}
+# Take only 1000 observations from the training set to make the methods run in a reasonable time
+trainInds <- sample(nrow(training), 1000)
+training <- training[trainInds,]
+
+### 1. Decision Trees Model ###
+fitRPart <- train(classe ~. , data=training, method="rpart")
+mod1 <- confusionMatrix (predict(fitRPart, newdata=test), test$classe)
+
+### 2. Random Forest Model ###
+fitRF <- train(training$classe ~. , data=training, method="rf")
+mod2 <- confusionMatrix (predict(fitRF, newdata=test), test$classe)
+
+### 3. Boosting with Trees Model ###
+fitGBM <- train(classe ~. , data=training, method="gbm", verbose=FALSE)
+mod3 <- confusionMatrix (predict(fitGBM, newdata=test), test$classe)
+
+### 4. LDA Model ###
+fitLDA <- train(classe ~. , data=training, method="lda")
+mod4 <- confusionMatrix (predict(fitLDA, newdata=test), test$classe)
+
+### 5. Bayes Model ###
+fitNB <- train(classe ~. , data=training, method="nb")
+mod5 <- confusionMatrix (predict(fitNB, newdata=test), test$classe)
+```
+
+The summarised accuracy results from each model trained are shown below:
+
+1. Decision Trees (rpart): **0.5029314**
+2. Random Forests (rf): **0.9576854**
+3. Boosting with Trees (gbm): **0.956156**
+4. Linear Discriminant Analysis (lda): **0.7035432**
+5. Naive Bayes (nb): **0.6721897**
+
+The models that give the best accuracy were the **Random Forests** and **Boosting with Trees (gbm)**. The Random Forest accuracy was a slightly better and this is why we chose this model.
+
+### Cross Validation
+The process for cross-validation that we followed consists of the following steps:
+
+1. Split the training data set into 3 parts: training, cross validation and test. 
+2. Used 1000 observations from the "training" partition of our training dataset to train our 5 models
+3. Used the "test" partition of our training dataset as an independent set to predict the **classe** variable and check the prediction accuracy of each of the 5 models
+4. Used the "cross-validation" partition of our training dataset ONLY ONCE with the selected model (Random Forests) and got the out of sample error.
+
+```{r echo=FALSE, eval=FALSE}
+# Do 1 test on the cross validation
+oosPred <- confusionMatrix (predict(fitRF, newdata=cv), cv$classe)
+oosError = 1 - oosPred$overall[1]
+```
+
+### Estimation of Out of Sample Error
+Our estimated out of sample error was **0.04537344** and was derived from the accuracy returned when we run our selected model (Random Forests) on the "cross-validation" partition of our training dataset.
+
+## Conclusion
+The **Random Forests** algorithm was the algorithms that performed best among the 5 different prediction models that were tested. The Random Trees algorithm gave the best accuracy prediction (**>95%**) and the lower out of sample error (**<5%**).
